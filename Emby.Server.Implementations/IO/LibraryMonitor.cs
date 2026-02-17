@@ -21,6 +21,7 @@ namespace Emby.Server.Implementations.IO
         private readonly ILibraryManager _libraryManager;
         private readonly IServerConfigurationManager _configurationManager;
         private readonly IFileSystem _fileSystem;
+        private readonly IIgnorePatterns _ignorePatterns;
 
         /// <summary>
         /// The file system watchers.
@@ -47,17 +48,20 @@ namespace Emby.Server.Implementations.IO
         /// <param name="configurationManager">The configuration manager.</param>
         /// <param name="fileSystem">The filesystem.</param>
         /// <param name="appLifetime">The <see cref="IHostApplicationLifetime"/>.</param>
+        /// <param name="ignorePatterns">The ignore patterns.</param>
         public LibraryMonitor(
             ILogger<LibraryMonitor> logger,
             ILibraryManager libraryManager,
             IServerConfigurationManager configurationManager,
             IFileSystem fileSystem,
-            IHostApplicationLifetime appLifetime)
+            IHostApplicationLifetime appLifetime,
+            IIgnorePatterns ignorePatterns)
         {
             _libraryManager = libraryManager;
             _logger = logger;
             _configurationManager = configurationManager;
             _fileSystem = fileSystem;
+            _ignorePatterns = ignorePatterns;
 
             appLifetime.ApplicationStarted.Register(Start);
         }
@@ -347,7 +351,7 @@ namespace Emby.Server.Implementations.IO
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
 
-            if (IgnorePatterns.ShouldIgnore(path))
+            if (_ignorePatterns.ShouldIgnore(path))
             {
                 return;
             }

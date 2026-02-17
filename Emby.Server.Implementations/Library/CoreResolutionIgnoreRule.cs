@@ -4,6 +4,7 @@ using Emby.Naming.Audio;
 using Emby.Naming.Common;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Resolvers;
 using MediaBrowser.Model.IO;
 
@@ -16,16 +17,19 @@ namespace Emby.Server.Implementations.Library
     {
         private readonly NamingOptions _namingOptions;
         private readonly IServerApplicationPaths _serverApplicationPaths;
+        private readonly IIgnorePatterns _ignorePatterns;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CoreResolutionIgnoreRule"/> class.
         /// </summary>
         /// <param name="namingOptions">The naming options.</param>
         /// <param name="serverApplicationPaths">The server application paths.</param>
-        public CoreResolutionIgnoreRule(NamingOptions namingOptions, IServerApplicationPaths serverApplicationPaths)
+        /// <param name="ignorePatterns">The ignore patterns.</param>
+        public CoreResolutionIgnoreRule(NamingOptions namingOptions, IServerApplicationPaths serverApplicationPaths, IIgnorePatterns ignorePatterns)
         {
             _namingOptions = namingOptions;
             _serverApplicationPaths = serverApplicationPaths;
+            _ignorePatterns = ignorePatterns;
         }
 
         /// <inheritdoc />
@@ -37,7 +41,7 @@ namespace Emby.Server.Implementations.Library
                 return false;
             }
 
-            if (IgnorePatterns.ShouldIgnore(fileInfo.FullName))
+            if (_ignorePatterns.ShouldIgnore(fileInfo.FullName))
             {
                 return true;
             }

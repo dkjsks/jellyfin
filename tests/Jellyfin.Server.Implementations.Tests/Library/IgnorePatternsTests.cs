@@ -1,10 +1,41 @@
+using System;
+using System.IO;
+using System.Text.Json;
 using Emby.Server.Implementations.Library;
+using MediaBrowser.Common.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Jellyfin.Server.Implementations.Tests.Library
 {
-    public class IgnorePatternsTests
+    public sealed class IgnorePatternsTests : IDisposable
     {
+        private readonly string _tempDir;
+
+        public IgnorePatternsTests()
+        {
+            _tempDir = Path.Combine(Path.GetTempPath(), "jellyfin-test-" + Path.GetRandomFileName());
+            Directory.CreateDirectory(_tempDir);
+        }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(_tempDir))
+            {
+                Directory.Delete(_tempDir, true);
+            }
+
+            GC.SuppressFinalize(this);
+        }
+
+        private IgnorePatterns CreateInstance(string? configDir = null)
+        {
+            var appPaths = new Mock<IApplicationPaths>();
+            appPaths.SetupGet(x => x.ConfigurationDirectoryPath).Returns(configDir ?? _tempDir);
+            return new IgnorePatterns(appPaths.Object, NullLogger<IgnorePatterns>.Instance);
+        }
+
         [Theory]
         [InlineData("/media/small.jpg", true)]
         [InlineData("/media/albumart.jpg", true)]
@@ -34,7 +65,63 @@ namespace Jellyfin.Server.Implementations.Tests.Library
         [InlineData("/movies/.zfs/snapshot/AutoM-2023-09", true)]
         public void PathIgnored(string path, bool expected)
         {
-            Assert.Equal(expected, IgnorePatterns.ShouldIgnore(path));
+            var instance = CreateInstance();
+            Assert.Equal(expected, instance.ShouldIgnore(path));
+        }
+
+        [Fact]
+        public void CreatesDefaultConfigFile()
+        {
+            var configPath = Path.Combine(_tempDir, "ignorepatterns.json");
+            Assert.False(File.Exists(configPath));
+
+            CreateInstance();
+
+            Assert.True(File.Exists(configPath));
+            var patterns = JsonSerializer.Deserialize<string[]>(File.ReadAllText(configPath));
+            Assert.NotNull(patterns);
+            Assert.NotEmpty(patterns);
+            Assert.Contains("**/small.jpg", patterns);
+        }
+
+        [Fact]
+        public void LoadsCustomPatterns()
+        {
+            var customPatterns = new[] { "**/custom.txt" };
+            File.WriteAllText(
+                Path.Combine(_tempDir, "ignorepatterns.json"),
+                JsonSerializer.Serialize(customPatterns));
+
+            var instance = CreateInstance();
+
+            Assert.True(instance.ShouldIgnore("/media/custom.txt"));
+            Assert.False(instance.ShouldIgnore("/media/small.jpg"));
+        }
+
+        [Fact]
+        public void FallsBackOnInvalidJson()
+        {
+            File.WriteAllText(
+                Path.Combine(_tempDir, "ignorepatterns.json"),
+                "not valid json {{{");
+
+            var instance = CreateInstance();
+
+            // Should fall back to defaults
+            Assert.True(instance.ShouldIgnore("/media/small.jpg"));
+        }
+
+        [Fact]
+        public void FallsBackOnEmptyArray()
+        {
+            File.WriteAllText(
+                Path.Combine(_tempDir, "ignorepatterns.json"),
+                "[]");
+
+            var instance = CreateInstance();
+
+            // Should fall back to defaults
+            Assert.True(instance.ShouldIgnore("/media/small.jpg"));
         }
     }
 }

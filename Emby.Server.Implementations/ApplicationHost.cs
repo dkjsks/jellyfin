@@ -529,6 +529,7 @@ namespace Emby.Server.Implementations
 
             serviceCollection.AddSingleton<IMusicManager, MusicManager>();
 
+            serviceCollection.AddSingleton<IIgnorePatterns, IgnorePatterns>();
             serviceCollection.AddSingleton<ILibraryMonitor, LibraryMonitor>();
 
             serviceCollection.AddSingleton<ISearchEngine, SearchEngine>();

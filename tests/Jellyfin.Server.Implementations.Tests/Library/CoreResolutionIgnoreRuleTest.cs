@@ -3,10 +3,13 @@ using System.IO;
 using Emby.Naming.Common;
 using Emby.Naming.Video;
 using Emby.Server.Implementations.Library;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -27,7 +30,13 @@ public class CoreResolutionIgnoreRuleTest
         _appPathsMock = new Mock<IServerApplicationPaths>();
         _appPathsMock.SetupGet(x => x.RootFolderPath).Returns("/server/root");
 
-        _rule = new CoreResolutionIgnoreRule(_namingOptions, _appPathsMock.Object);
+        var tempDir = Path.Combine(Path.GetTempPath(), "jellyfin-test-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+        var appPaths = new Mock<IApplicationPaths>();
+        appPaths.SetupGet(x => x.ConfigurationDirectoryPath).Returns(tempDir);
+        var ignorePatterns = new IgnorePatterns(appPaths.Object, NullLogger<IgnorePatterns>.Instance);
+
+        _rule = new CoreResolutionIgnoreRule(_namingOptions, _appPathsMock.Object, ignorePatterns);
     }
 
     private FileSystemMetadata MakeFileSystemMetadata(string fullName, bool isDirectory = false)

@@ -1,17 +1,21 @@
 using System;
+using System.IO;
+using System.Text.Json;
 using DotNet.Globbing;
+using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Library;
+using Microsoft.Extensions.Logging;
 
 namespace Emby.Server.Implementations.Library
 {
     /// <summary>
-    /// Glob patterns for files to ignore.
+    /// Glob patterns for files to ignore, loaded from an external JSON configuration file.
     /// </summary>
-    public static class IgnorePatterns
+    public class IgnorePatterns : IIgnorePatterns
     {
-        /// <summary>
-        /// Files matching these glob patterns will be ignored.
-        /// </summary>
-        private static readonly string[] _patterns =
+        private const string ConfigFileName = "ignorepatterns.json";
+
+        private static readonly string[] _defaultPatterns =
         {
             "**/small.jpg",
             "**/albumart.jpg",
@@ -88,10 +92,6 @@ namespace Emby.Server.Implementations.Library
             // Unix hidden files
             "**/.*",
 
-            // Mac - if you ever remove the above.
-            // "**/._*",
-            // "**/.DS_Store",
-
             // thumbs.db
             "**/thumbs.db",
 
@@ -104,6 +104,8 @@ namespace Emby.Server.Implementations.Library
             "**/.zfs"
         };
 
+        private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+
         private static readonly GlobOptions _globOptions = new GlobOptions
         {
             Evaluation =
@@ -112,14 +114,21 @@ namespace Emby.Server.Implementations.Library
             }
         };
 
-        private static readonly Glob[] _globs = Array.ConvertAll(_patterns, p => Glob.Parse(p, _globOptions));
+        private readonly Glob[] _globs;
 
         /// <summary>
-        /// Returns true if the supplied path should be ignored.
+        /// Initializes a new instance of the <see cref="IgnorePatterns"/> class.
         /// </summary>
-        /// <param name="path">The path to test.</param>
-        /// <returns>Whether to ignore the path.</returns>
-        public static bool ShouldIgnore(ReadOnlySpan<char> path)
+        /// <param name="appPaths">The application paths.</param>
+        /// <param name="logger">The logger.</param>
+        public IgnorePatterns(IApplicationPaths appPaths, ILogger<IgnorePatterns> logger)
+        {
+            var patterns = LoadPatterns(appPaths.ConfigurationDirectoryPath, logger);
+            _globs = Array.ConvertAll(patterns, p => Glob.Parse(p, _globOptions));
+        }
+
+        /// <inheritdoc />
+        public bool ShouldIgnore(ReadOnlySpan<char> path)
         {
             int len = _globs.Length;
             for (int i = 0; i < len; i++)
@@ -131,6 +140,47 @@ namespace Emby.Server.Implementations.Library
             }
 
             return false;
+        }
+
+        private static string[] LoadPatterns(string configDir, ILogger logger)
+        {
+            var configPath = Path.Combine(configDir, ConfigFileName);
+
+            if (!File.Exists(configPath))
+            {
+                try
+                {
+                    Directory.CreateDirectory(configDir);
+                    var json = JsonSerializer.Serialize(_defaultPatterns, _jsonOptions);
+                    File.WriteAllText(configPath, json);
+                    logger.LogInformation("Created default ignore patterns configuration at {Path}", configPath);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to write default ignore patterns to {Path}", configPath);
+                }
+
+                return _defaultPatterns;
+            }
+
+            try
+            {
+                var json = File.ReadAllText(configPath);
+                var patterns = JsonSerializer.Deserialize<string[]>(json);
+                if (patterns is null || patterns.Length == 0)
+                {
+                    logger.LogWarning("Ignore patterns file {Path} is empty, using defaults", configPath);
+                    return _defaultPatterns;
+                }
+
+                logger.LogInformation("Loaded {Count} ignore patterns from {Path}", patterns.Length, configPath);
+                return patterns;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to read ignore patterns from {Path}, using defaults", configPath);
+                return _defaultPatterns;
+            }
         }
     }
 }
